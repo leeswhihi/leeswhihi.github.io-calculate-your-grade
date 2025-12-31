@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>멋쟁이가 만든 성적 계산기!</title>
+    <title>프리미엄 성적 계산기 (자동 저장 지원)</title>
     <style>
         @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
 
@@ -81,6 +81,7 @@
             color: #333;
             transition: all 0.2s ease;
             box-shadow: inset var(--shadow-sm);
+            appearance: none;
             -moz-appearance: textfield;
         }
 
@@ -127,6 +128,20 @@
         .footer-label { color: #888; font-size: 0.85rem; }
         .footer-sum { color: #333; font-size: 1rem; }
 
+        /* 데이터 삭제 버튼 스타일 */
+        .reset-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background-color: #f5f7fa;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            color: #888;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .reset-btn:hover { background-color: #ED5565; color: white; border-color: #ED5565; }
+
         @media (max-width: 768px) {
             .container { flex-direction: column; align-items: stretch; }
             .card { overflow-x: auto; }
@@ -136,7 +151,7 @@
 <body>
 
     <h1>📊 내신 성적 계산기</h1>
-    <p class="description">빈칸에 점수를 입력하면 자동으로 성적이 계산됩니다.</p>
+    <p class="description">입력한 점수는 브라우저에 자동으로 저장됩니다.</p>
 
     <div class="container">
         <div class="card">
@@ -186,6 +201,8 @@
         </div>
     </div>
 
+    <button class="reset-btn" onclick="resetData()">전체 데이터 초기화</button>
+
     <script>
         const subjects = [
             { name: "국어", noMid: false }, { name: "수학", noMid: false },
@@ -195,8 +212,10 @@
 
         const tbody = document.getElementById('subjectRows');
 
+        // 테이블 초기 생성
         subjects.forEach((sub, idx) => {
             const tr = document.createElement('tr');
+            tr.dataset.idx = idx; // 행 인덱스 저장
             const midHtml = sub.noMid 
                 ? `<input type="number" class="score-input mid disabled-input" disabled value="0">` 
                 : `<input type="number" class="score-input mid" placeholder="0" step="any">`;
@@ -213,10 +232,42 @@
             tbody.appendChild(tr);
         });
 
-        // 숫자를 0~100 사이로 보정하는 헬퍼 함수
         function clamp(num) {
             if (isNaN(num)) return 0;
             return Math.max(0, Math.min(100, num));
+        }
+
+        // 저장 기능: 입력된 모든 점수를 객체 형태로 저장
+        function saveData() {
+            const data = [];
+            document.querySelectorAll('#subjectRows tr').forEach(row => {
+                data.push({
+                    p1: row.querySelector('.p1').value,
+                    p2: row.querySelector('.p2').value,
+                    mid: row.querySelector('.mid').value,
+                    f: row.querySelector('.f').value
+                });
+            });
+            localStorage.setItem('myGrades', JSON.stringify(data));
+        }
+
+        // 불러오기 기능: 저장된 점수를 입력칸에 채워넣음
+        function loadData() {
+            const saved = localStorage.getItem('myGrades');
+            if (!saved) return;
+            
+            const data = JSON.parse(saved);
+            const rows = document.querySelectorAll('#subjectRows tr');
+            
+            rows.forEach((row, i) => {
+                if (data[i]) {
+                    row.querySelector('.p1').value = data[i].p1;
+                    row.querySelector('.p2').value = data[i].p2;
+                    row.querySelector('.mid').value = data[i].mid;
+                    row.querySelector('.f').value = data[i].f;
+                }
+            });
+            calculate(); // 불러온 뒤 즉시 계산
         }
 
         function calculate() {
@@ -232,7 +283,6 @@
                     f: row.querySelector('.f')
                 };
 
-                // 원본 입력값을 가져와서 보정 (실제 계산에 쓰일 값)
                 const v = {
                     p1: clamp(parseFloat(inputs.p1.value)),
                     p2: clamp(parseFloat(inputs.p2.value)),
@@ -240,15 +290,12 @@
                     f: clamp(parseFloat(inputs.f.value))
                 };
 
-                // 화면 입력 필드 값도 보정된 값으로 업데이트 (0100 -> 100 등)
                 Object.keys(inputs).forEach(key => {
                     const input = inputs[key];
                     if (input.value !== "" && !input.disabled) {
-                        // 입력 도중에 소수점을 찍는 중일 수 있으므로 blur 시점이 아니면 문자열 보정만
                         if(input.value.length > 1 && input.value.startsWith('0') && !input.value.startsWith('0.')) {
                             input.value = Number(input.value);
                         }
-                        // 범위를 벗어난 경우에만 강제 수정
                         if (parseFloat(input.value) > 100) input.value = 100;
                         if (parseFloat(input.value) < 0) input.value = 0;
                     }
@@ -257,7 +304,6 @@
                 sums.p1 += v.p1; sums.p2 += v.p2; sums.f += v.f;
                 if (!inputs.mid.disabled) { sums.mid += v.mid; midCount++; }
 
-                // 가중치 계산 (보정된 v값 사용)
                 let total = subjects[i].noMid 
                     ? (v.p1 * 0.3) + (v.p2 * 0.3) + (v.f * 0.4)
                     : (v.p1 * 0.2) + (v.p2 * 0.2) + (v.mid * 0.3) + (v.f * 0.3);
@@ -283,8 +329,18 @@
             document.getElementById('sum-p2').textContent = sums.p2.toFixed(1).replace(/\.0$/, '');
             document.getElementById('sum-mid').textContent = sums.mid.toFixed(1).replace(/\.0$/, '');
             document.getElementById('sum-f').textContent = sums.f.toFixed(1).replace(/\.0$/, '');
+            
+            saveData(); // 계산될 때마다 실시간 저장
         }
 
+        function resetData() {
+            if (confirm("정말로 모든 점수를 초기화하시겠습니까?")) {
+                localStorage.removeItem('myGrades');
+                location.reload();
+            }
+        }
+
+        // 이벤트 리스너 설정
         document.querySelectorAll('.score-input').forEach(input => {
             input.addEventListener('input', calculate);
             input.addEventListener('focus', function() { this.select(); });
@@ -292,10 +348,13 @@
             input.addEventListener('blur', function() { 
                 if(this.value !== "") {
                     this.value = clamp(parseFloat(this.value));
-                    calculate(); // 최종 보정값으로 다시 계산
+                    calculate();
                 }
             });
         });
+
+        // 페이지 로드 시 데이터 불러오기 실행
+        window.onload = loadData;
     </script>
 </body>
 </html>
